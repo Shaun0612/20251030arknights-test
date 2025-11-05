@@ -1,6 +1,7 @@
 // 測驗系統的核心變數
 let quizTable;
 let questions = [];
+let questionImages = {}; // 用來儲存預載入的圖片
 let currentQuestionIndex = 0;
 let score = 0;
 let currentShuffledOptions = []; // 儲存當前問題隨機排序後的選項
@@ -20,7 +21,24 @@ let resultParticles = []; // 最終成績的動畫粒子
 
 function preload() {
   // 載入 CSV 檔案，指定 'csv' 格式和 'header' (第一行是標頭)
-  quizTable = loadTable('quiz.csv', 'csv', 'header');
+  quizTable = loadTable('quiz.csv', 'csv', 'header', () => {
+    // 這個回呼函式會在 CSV 載入後執行
+    // 遍歷 CSV 載入所有圖片路徑
+    for (let row of quizTable.getRows()) {
+      const imagePaths = [
+        row.getString('imgA'),
+        row.getString('imgB'),
+        row.getString('imgC'),
+        row.getString('imgD')
+      ];
+      for (const path of imagePaths) {
+        // 如果路徑存在且尚未載入
+        if (path && !questionImages[path]) {
+          questionImages[path] = loadImage(path);
+        }
+      }
+    }
+  });
 }
 
 // === 2. p5.js 設定階段 ===
@@ -34,7 +52,7 @@ function setup() {
 
   // 初始化選項按鈕的結構
   for (let i = 0; i < 4; i++) {
-    optionButtons.push({ text: '', isHover: false });
+    optionButtons.push({ text: '', img: null, isHover: false });
   }
 
   // 根據當前畫布大小更新所有 UI 元件的佈局
@@ -54,12 +72,20 @@ function parseQuizData() {
       row.getString('optC'),
       row.getString('optD')
     ];
+    let imagePaths = [
+      row.getString('imgA'),
+      row.getString('imgB'),
+      row.getString('imgC'),
+      row.getString('imgD')
+    ];
     let correctIndex = row.getNum('correctIndex');
 
     // 將問題物件存入陣列
     questions.push({
       text: questionText,
       options: options,
+      // 將圖片路徑轉換為已載入的圖片物件
+      images: imagePaths.map(path => (path ? questionImages[path] : null)),
       correct: correctIndex
     });
   }
@@ -76,6 +102,7 @@ function loadQuestion(qIndex) {
   for (let i = 0; i < q.options.length; i++) {
     currentShuffledOptions.push({
       text: q.options[i],
+      img: q.images[i],
       isCorrect: (i === q.correct)
     });
   }
@@ -162,10 +189,38 @@ function drawQuizScreen() {
   rectMode(CORNER); // 重設 rectMode，避免影響其他元件
   textAlign(LEFT, BASELINE); // 重設 textAlign
 
+  // --- 動態計算並繪製選項按鈕 ---
+  const isWide = width > 800; // 判斷是否為寬螢幕
+  const gap = 20;
+  const startY = height / 2 - 100;
+
+  // 根據是否有圖片決定按鈕大小
+  const btnW_text = isWide ? 300 : width * 0.4;
+  const btnH_text = 50;
+  const btnW_img = isWide ? 350 : width * 0.45;
+  const btnH_img = 400;
+
+  // 檢查當前題目是否包含任何圖片
+  const hasImage = currentShuffledOptions.some(opt => opt.img);
+
   // 繪製選項按鈕
   for (let i = 0; i < optionButtons.length; i++) {
     let btn = optionButtons[i];
     btn.text = currentShuffledOptions[i].text; // 使用隨機排序後的選項文字
+    btn.img = currentShuffledOptions[i].img;   // 使用隨機排序後的圖片
+
+    // 根據是否有圖片，動態設定按鈕大小
+    if (btn.img) {
+      btn.w = btnW_img;
+      btn.h = btnH_img;
+    } else {
+      btn.w = btnW_text;
+      btn.h = btnH_text;
+    }
+    // 動態設定按鈕位置
+    btn.x = (width / 2) + (i % 2 === 0 ? -1 : 1) * (btn.w / 2 + gap / 2);
+    btn.y = startY + (floor(i / 2) === 0 ? 0 : 1) * ((hasImage ? btnH_img : btnH_text) + gap);
+
     drawButton(btn);
   }
 
@@ -240,7 +295,7 @@ function drawButton(btn) {
   push(); // 保存繪圖設定
   translate(btn.x, btn.y);
   rectMode(CENTER);
-  textAlign(CENTER, CENTER);
+  
   textSize(22);
   textStyle(NORMAL);
 
@@ -259,7 +314,24 @@ function drawButton(btn) {
 
   fill(255); // 按鈕文字顏色
   noStroke();
-  text(btn.text, 0, 0);
+
+  // 如果有圖片，就繪製圖片和文字
+  if (btn.img) {
+    // 繪製圖片 (上半部)
+    imageMode(CENTER);
+    let imgHeight = btn.h * 0.85; // 圖片佔用 75% 的高度
+    let imgWidth = imgHeight; // 保持圖片比例
+    image(btn.img, 0, -btn.h / 2 + imgHeight / 2 + 5, imgWidth, imgHeight);
+
+    // 繪製文字 (下半部)
+    textAlign(CENTER, CENTER);
+    let textY = btn.h * 0.4; // 將文字定位在按鈕下方約 3/4 處
+    text(btn.text, 0, textY);
+  } else {
+    // 如果沒有圖片，文字置中
+    textAlign(CENTER, CENTER);
+    text(btn.text, 0, 0);
+  }
   pop(); // 恢復繪圖設定
 }
 
@@ -366,7 +438,7 @@ function mouseMoved() {
 function updateLayout() {
   // 根據畫布寬度決定按鈕大小和間距
   const isWide = width > 700; // 判斷是否為寬螢幕
-  const btnW = isWide ? 300 : width * 0.4;
+  const btnW = isWide ? 350 : width * 0.45; // 這個值現在主要影響開始和重試按鈕
   const btnH = 50;
   const gap = 20;
 
@@ -374,8 +446,9 @@ function updateLayout() {
   const startX = width / 2;
   const startY = height / 2 + 80;
   for (let i = 0; i < optionButtons.length; i++) {
+    // 注意：選項按鈕的最終大小和位置現在由 drawQuizScreen 動態決定
+    // 這裡的設定僅為初始化
     let btn = optionButtons[i];
-    // i=0 (左上), i=1 (右上), i=2 (左下), i=3 (右下)
     btn.x = startX + (i % 2 === 0 ? -1 : 1) * (btnW / 2 + gap / 2);
     btn.y = startY + (floor(i / 2) === 0 ? 0 : 1) * (btnH + gap);
     btn.w = btnW;
