@@ -10,12 +10,17 @@ let gameState = 'LOADING'; // 遊戲狀態: LOADING, START, QUIZZING, RESULTS
 // UI 變數
 let optionButtons = []; // 選項按鈕
 let startButton, retryButton;
+let questionP; // 用來顯示問題的 HTML 段落元素
 let feedbackText = ''; // 答題回饋
 
 // 特效變數
 let cursorParticles = []; // 游標粒子
 let selectionEffect = null; // 點擊選項的特效
 let resultParticles = []; // 最終成績的動畫粒子
+
+// 滾動變數
+let scrollY = 0;
+let contentHeight = 0;
 
 // === 1. p5.js 載入階段 ===
 
@@ -60,6 +65,17 @@ function setup() {
 
   // 載入完成，進入開始畫面
   gameState = 'START';
+}
+
+function createQuestionParagraph() {
+  // 如果段落元素已存在，先移除
+  if (questionP) {
+    questionP.remove();
+  }
+  questionP = createP(''); // 建立一個空的 <p> 元素
+  questionP.style('font-size', '22px'); // 在這裡調整題目文字的大小
+  questionP.style('font-weight', 'bold');
+  questionP.style('color', '#FFFFFF');
 }
 
 function parseQuizData() {
@@ -117,6 +133,11 @@ function draw() {
   background(40, 40, 50); // 深藍灰色背景
   noStroke();
 
+  // --- 滾動視圖 ---
+  // 根據 scrollY 的值來移動整個畫布
+  push();
+  translate(0, scrollY);
+
   // 根據不同的遊戲狀態，繪製不同的畫面
   switch (gameState) {
     case 'START':
@@ -131,6 +152,27 @@ function draw() {
     case 'LOADING':
       drawLoadingScreen();
       break;
+  }
+
+  // 恢復畫布的原始狀態，這樣游標特效才不會跟著滾動
+  pop();
+
+  // --- 在滾動視圖之外繪製固定 UI ---
+  // 這些元件會固定在畫面上，不受滾動影響
+  if (gameState === 'QUIZZING') {
+    // 繪製回饋文字 (例如：答對了！/ 答錯了)
+    if (feedbackText) {
+      fill(feedbackText.includes('正確') ? [0, 255, 0] : [255, 0, 0]);
+      textSize(24);
+      textAlign(CENTER, CENTER);
+      text(feedbackText, width / 2, height - 80);
+    }
+
+    // 繪製進度
+    fill(150);
+    textSize(16);
+    textAlign(CENTER, BOTTOM);
+    text(`進度: ${currentQuestionIndex + 1} / ${questions.length} | 分數: ${score}`, width / 2, height - 30);
   }
 
   // 繪製游標特效 (在所有畫面的最上層)
@@ -178,30 +220,39 @@ function drawQuizScreen() {
   // 取得目前的問題
   let q = questions[currentQuestionIndex];
 
-  // 繪製問題
-  fill(255);
-  rectMode(CENTER); // 確保文字框以提供的 x,y 為中心
-  textAlign(CENTER, TOP); // 將題目文字改為水平置中
-  textSize(28);
-  textStyle(BOLD);
-  // 為了讓長題目能自動換行，我們需要提供一個文字框。
-  text(`Q${currentQuestionIndex + 1}: ${q.text}`, width / 2, 120, width * 0.8); // (x, y, width)
-  rectMode(CORNER); // 重設 rectMode，避免影響其他元件
-  textAlign(LEFT, BASELINE); // 重設 textAlign
+  // --- 使用 HTML 元素顯示問題並計算其高度 ---
+  const questionText = `Q${currentQuestionIndex + 1}: ${q.text}`;
+  const questionWidth = width * 0.8;
+  const questionY = 60; // 將題目向上移動
+  
+  // 更新 HTML 元素的內容和樣式
+  questionP.html(questionText);
+  questionP.position((width - questionWidth) / 2, questionY + scrollY); // 加上 scrollY 讓它跟著滾動
+  questionP.size(questionWidth, AUTO);
+  questionP.show(); // 確保元素是可見的
+
+  // 從 HTML 元素獲取精確的高度
+  const questionHeight = questionP.height;
+  let questionBottomY = questionY + questionHeight;
+
+  // 重設文字對齊，避免影響後續元件
+  textAlign(LEFT, BASELINE);
 
   // --- 動態計算並繪製選項按鈕 ---
   const isWide = width > 800; // 判斷是否為寬螢幕
   const gap = 20;
-  const startY = height / 2 - 100;
+  // 讓選項從問題下方開始，並保留一些間距
+  const startY = questionBottomY + windowWidth*0.125; // 增加題目和選項之間的間距
 
   // 根據是否有圖片決定按鈕大小
   const btnW_text = isWide ? 300 : width * 0.4;
   const btnH_text = 50;
   const btnW_img = isWide ? 350 : width * 0.45;
-  const btnH_img = 400;
+  const btnH_img = 350; // 稍微縮小圖片按鈕高度以適應更多螢幕
 
   // 檢查當前題目是否包含任何圖片
   const hasImage = currentShuffledOptions.some(opt => opt.img);
+  const rowHeight = hasImage ? btnH_img : btnH_text;
 
   // 繪製選項按鈕
   for (let i = 0; i < optionButtons.length; i++) {
@@ -218,25 +269,19 @@ function drawQuizScreen() {
       btn.h = btnH_text;
     }
     // 動態設定按鈕位置
+    // Y 座標的計算需要考慮按鈕自身的高度，確保是按鈕的上緣對齊
+    const rowTopY = startY + floor(i / 2) * (rowHeight + gap);
     btn.x = (width / 2) + (i % 2 === 0 ? -1 : 1) * (btn.w / 2 + gap / 2);
-    btn.y = startY + (floor(i / 2) === 0 ? 0 : 1) * ((hasImage ? btnH_img : btnH_text) + gap);
+    btn.y = rowTopY + btn.h / 2; // 按鈕的中心點 Y
 
     drawButton(btn);
   }
 
-  // 繪製回饋文字 (例如：答對了！/ 答錯了)
-  if (feedbackText) {
-    fill(feedbackText.includes('正確') ? [0, 255, 0] : [255, 0, 0]);
-    textSize(24);
-    textAlign(CENTER, CENTER);
-    text(feedbackText, width / 2, height - 80);
-  }
+  // --- 根據內容調整畫布高度 ---
+  // 計算選項區塊的底部 Y 座標
+  const optionsBottomY = startY + floor((optionButtons.length - 1) / 2) * (rowHeight + gap) + rowHeight;
+  contentHeight = optionsBottomY + 120; // 更新全域的內容高度
 
-  // 繪製進度
-  fill(150);
-  textSize(16);
-  textAlign(CENTER, BOTTOM);
-  text(`進度: ${currentQuestionIndex + 1} / ${questions.length} | 分數: ${score}`, width / 2, height - 30);
 }
 
 function drawResultScreen() {
@@ -289,8 +334,10 @@ function drawResultScreen() {
 // 繪製一個通用的按鈕
 function drawButton(btn) {
   // 檢查滑鼠是否懸停
+  // 因為畫布被 translate 移動了，所以需要從 mouseY 減去 scrollY 來得到正確的相對座標
+  const correctedMouseY = mouseY - scrollY;
   btn.isHover = (mouseX > btn.x - btn.w / 2 && mouseX < btn.x + btn.w / 2 &&
-                 mouseY > btn.y - btn.h / 2 && mouseY < btn.y + btn.h / 2);
+                 correctedMouseY > btn.y - btn.h / 2 && correctedMouseY < btn.y + btn.h / 2);
 
   push(); // 保存繪圖設定
   translate(btn.x, btn.y);
@@ -319,7 +366,7 @@ function drawButton(btn) {
   if (btn.img) {
     // 繪製圖片 (上半部)
     imageMode(CENTER);
-    let imgHeight = btn.h * 0.85; // 圖片佔用 75% 的高度
+    let imgHeight = btn.h * 0.8; // 圖片佔用 80% 的高度
     let imgWidth = imgHeight; // 保持圖片比例
     image(btn.img, 0, -btn.h / 2 + imgHeight / 2 + 5, imgWidth, imgHeight);
 
@@ -401,6 +448,7 @@ function mousePressed() {
   if (gameState === 'START') {
     if (startButton.isHover) {
       gameState = 'QUIZZING';
+      createQuestionParagraph(); // 建立問題顯示區塊
       loadQuestion(currentQuestionIndex); // 第一次進入測驗時，載入第一題
     }
   } else if (gameState === 'QUIZZING') {
@@ -415,6 +463,7 @@ function mousePressed() {
     }
   } else if (gameState === 'RESULTS') {
     if (retryButton.isHover) {
+      questionP.hide(); // 隱藏問題段落
       resetQuiz();
     }
   }
@@ -433,6 +482,24 @@ function mouseMoved() {
     }
 }
 
+// 監聽滑鼠滾輪事件
+function mouseWheel(event) {
+  // 只有在測驗畫面才允許滾動
+  if (gameState === 'QUIZZING') {
+    // event.delta 提供了滾動的幅度 (正值向下，負值向上)
+    scrollY -= event.delta;
+
+    // 限制滾動範圍
+    // 1. 不能向上滾動超過頂部 (scrollY 不能大於 0)
+    // 2. 不能向下滾動超過內容底部 (scrollY 的最小值)
+    scrollY = constrain(scrollY, min(0, height - contentHeight), 0);
+
+    // 當滾動時，更新問題段落的位置
+    const questionWidth = width * 0.8;
+    questionP.position((width - questionWidth) / 2, 120 + scrollY);
+  }
+}
+
 // === 響應式佈局更新函式 ===
 
 function updateLayout() {
@@ -444,6 +511,8 @@ function updateLayout() {
 
   // 1. 更新選項按鈕 (2x2 網格)
   const startX = width / 2;
+  // 在 QUIZZING 狀態下，Y 座標是動態計算的，這裡的設定主要影響 START 畫面 (雖然那裡也用不到)
+  // 但保留結構完整性
   const startY = height / 2 + 80;
   for (let i = 0; i < optionButtons.length; i++) {
     // 注意：選項按鈕的最終大小和位置現在由 drawQuizScreen 動態決定
@@ -454,6 +523,10 @@ function updateLayout() {
     btn.w = btnW;
     btn.h = btnH;
   }
+
+
+  // 重設滾動位置
+  scrollY = 0;
 
   // 2. 更新開始按鈕
   startButton = {
