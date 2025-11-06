@@ -347,6 +347,7 @@ function drawButton(btn) {
   push(); // 保存繪圖設定
   translate(btn.x, btn.y);
   rectMode(CENTER);
+
   
   textSize(22);
   textStyle(NORMAL);
@@ -354,6 +355,11 @@ function drawButton(btn) {
   if (btn.isHover) {
     fill(100, 150, 255); // 懸停時的亮藍色
     stroke(255);
+    if (btn.highlightColor) {
+      // 如果有高亮顏色，則先繪製高亮矩形
+      fill(btn.highlightColor);
+      rect(0, 0, btn.w + 10, btn.h + 5, 10);
+    }
     strokeWeight(3);
     // 稍微放大特效
     rect(0, 0, btn.w + 10, btn.h + 5, 10);
@@ -361,6 +367,11 @@ function drawButton(btn) {
     fill(60, 80, 150); // 預設的深藍色
     stroke(200);
     strokeWeight(1);
+    if (btn.highlightColor) {
+      // 如果有高亮顏色，則先繪製高亮矩形
+      fill(btn.highlightColor);
+      rect(0, 0, btn.w + 10, btn.h + 5, 10);
+    }
     rect(0, 0, btn.w, btn.h, 10); // 圓角矩形
   }
 
@@ -422,12 +433,14 @@ function checkAnswer(selectedIndex) {
   if (feedbackText) return; // 如果還在顯示回饋，就不要重複觸發
 
   if (currentShuffledOptions[selectedIndex].isCorrect) {
+    highlightCorrectAnswer(selectedIndex, true);
     score++;
     feedbackText = '回答正確！';
     selectionEffect = new SelectionEffect(optionButtons[selectedIndex].x, optionButtons[selectedIndex].y, color(0, 255, 0));
   } else {
     feedbackText = `答錯了！`; // 簡化回饋，避免透露答案
     selectionEffect = new SelectionEffect(optionButtons[selectedIndex].x, optionButtons[selectedIndex].y, color(255, 0, 0));
+    highlightCorrectAnswer(selectedIndex, false);
   }
 
   // 停留 1.5 秒後跳到下一題
@@ -439,6 +452,25 @@ function checkAnswer(selectedIndex) {
   }, 1500);
 }
 
+function highlightCorrectAnswer(selectedIndex, isCorrect) {
+  // 找到正確答案的索引
+  let correctIndex = currentShuffledOptions.findIndex(option => option.isCorrect);
+
+  // 如果選擇正確，則高亮顯示選擇的選項為綠色
+  if (isCorrect) {
+    optionButtons[selectedIndex].highlightColor = color(0, 255, 0, 150); // 綠色
+  }
+  // 如果選擇錯誤，則高亮顯示選擇的選項為紅色，並高亮顯示正確答案為綠色
+  else {
+    optionButtons[selectedIndex].highlightColor = color(255, 0, 0, 150); // 紅色
+    optionButtons[correctIndex].highlightColor = color(0, 255, 0, 150); // 綠色
+  }
+
+  // 在 1.5 秒後清除高亮
+  setTimeout(() => {
+    optionButtons.forEach(btn => btn.highlightColor = null);
+  }, 1500);
+}
 // 重設測驗
 function resetQuiz() {
   score = 0;
