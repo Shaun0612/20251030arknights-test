@@ -73,7 +73,7 @@ function createQuestionParagraph() {
     questionP.remove();
   }
   questionP = createP(''); // 建立一個空的 <p> 元素
-  questionP.style('font-size', '22px'); // 在這裡調整題目文字的大小
+  questionP.style('font-size', `${windowWidth / 70}px`); // 根據視窗寬度調整文字大小
   questionP.style('font-weight', 'bold');
   questionP.style('color', '#FFFFFF');
 }
@@ -137,6 +137,11 @@ function draw() {
   // 根據 scrollY 的值來移動整個畫布
   push();
   translate(0, scrollY);
+
+  // --- 實時更新題目文字大小 ---
+  if (gameState === 'QUIZZING' && questionP) {
+    questionP.style('font-size', `${windowWidth / 50}px`);
+  }
 
   // 根據不同的遊戲狀態，繪製不同的畫面
   switch (gameState) {
@@ -496,7 +501,7 @@ function mouseWheel(event) {
 
     // 當滾動時，更新問題段落的位置
     const questionWidth = width * 0.8;
-    questionP.position((width - questionWidth) / 2, 120 + scrollY);
+    questionP.position((width - questionWidth) / 2, 80 + scrollY);
   }
 }
 
